@@ -53,6 +53,17 @@ private:
         settings1.checkUnusedTemplates = true;
         settings2.checkUnusedTemplates = true;
 
+        TEST_CASE(c1);
+        TEST_CASE(cstruct1);
+        TEST_CASE(cstruct2);
+        TEST_CASE(cstruct3);
+        TEST_CASE(cfp1);
+        TEST_CASE(cfp2);
+        TEST_CASE(cfp4);
+        TEST_CASE(carray1);
+        TEST_CASE(carray2);
+        TEST_CASE(cdonotreplace1);
+
         TEST_CASE(simplifyTypedef1);
         TEST_CASE(simplifyTypedef2);
         TEST_CASE(simplifyTypedef3);
@@ -270,6 +281,86 @@ private:
     }
 
 
+    std::string simplifyTypedefC(const char code[]) {
+        errout.str("");
+
+        Tokenizer tokenizer(&settings1, this);
+
+        std::istringstream istr(code);
+        tokenizer.list.createTokens(istr, "file.c");
+        tokenizer.createLinks();
+        tokenizer.simplifyTypedef();
+        try {
+            tokenizer.validate();
+        } catch (const InternalError&) {
+            return "";
+        }
+        return tokenizer.tokens()->stringifyList(nullptr, false);
+    }
+
+    void c1() {
+        const char code[] = "typedef int t;\n"
+                            "t x;";
+        ASSERT_EQUALS("; int x ;", simplifyTypedefC(code));
+    }
+
+    void cstruct1() {
+        const char code[] = "typedef struct { int a; int b; } t;\n"
+                            "t x;";
+        ASSERT_EQUALS("struct t { int a ; int b ; } ; struct t x ;", simplifyTypedef(code));
+        ASSERT_EQUALS("struct t { int a ; int b ; } ; struct t x ;", simplifyTypedefC(code));
+    }
+
+    void cstruct2() {
+        const char code[] = "typedef enum { A, B } t;\n"
+                            "t x;";
+        ASSERT_EQUALS("enum t { A , B } ; enum t x ;", simplifyTypedef(code));
+        ASSERT_EQUALS("enum t { A , B } ; enum t x ;", simplifyTypedefC(code));
+    }
+
+    void cstruct3() {
+        const char code[] = "typedef struct s { int a; int b; } t;\n"
+                            "t x;";
+        ASSERT_EQUALS("struct s { int a ; int b ; } ; struct s x ;", simplifyTypedefC(code));
+    }
+
+    void cfp1() {
+        const char code[] = "typedef void (*fp)(void * p);\n"
+                            "fp x;";
+        ASSERT_EQUALS("; void ( * x ) ( void * p ) ;", simplifyTypedefC(code));
+    }
+
+    void cfp2() {
+        const char code[] = "typedef void (*const fp)(void * p);\n"
+                            "fp x;";
+        ASSERT_EQUALS("; void ( * const x ) ( void * p ) ;", simplifyTypedefC(code));
+    }
+
+    void cfp4() {
+        const char code[] = "typedef struct S Stype ;\n"
+                            "typedef void ( * F ) ( Stype * ) ;\n"
+                            "F func;";
+        ASSERT_EQUALS("; ; void ( * func ) ( struct S * ) ;", simplifyTypedefC(code));
+    }
+
+    void carray1() {
+        const char code[] = "typedef int t[20];\n"
+                            "t x;";
+        ASSERT_EQUALS("; int x [ 20 ] ;", simplifyTypedefC(code));
+    }
+
+    void carray2() {
+        const char code[] = "typedef double t[4];\n"
+                            "t x[10];";
+        ASSERT_EQUALS("; double x [ 4 ] [ 10 ] ;", simplifyTypedef(code));
+        ASSERT_EQUALS("; double x [ 4 ] [ 10 ] ;", simplifyTypedefC(code));
+    }
+
+    void cdonotreplace1() {
+        const char code[] = "typedef int t;\n"
+                            "int* t;";
+        ASSERT_EQUALS("; int * t ;", simplifyTypedefC(code));
+    }
 
     void simplifyTypedef1() {
         const char code[] = "class A\n"
@@ -670,8 +761,8 @@ private:
                             "PFV pfv;";
 
         const char expected[] =
-            ""
-            ""
+            "; "
+            "; "
             "void ( * pf ) ( ) ; "
             "void * ( * pfv ) ( void * ) ;";
 
@@ -793,6 +884,7 @@ private:
                 "}";
 
             ASSERT_EQUALS(expected, tok(code, false));
+            ASSERT_EQUALS(std::string("; ") + expected, simplifyTypedefC(code));
         }
 
         {
@@ -821,11 +913,12 @@ private:
                                 "}";
 
             const char expected[] =
-                "struct vfs_class { "
+                "; struct vfs_class { "
                 "void ( * fill_names ) ( struct vfs_class * me , void ( * ) ( const char * ) ) ; "
                 "}";
 
             ASSERT_EQUALS(expected, simplifyTypedef(code));
+            ASSERT_EQUALS(expected, simplifyTypedefC(code));
         }
 
         {
@@ -835,11 +928,12 @@ private:
                                 "}";
 
             const char expected[] =
-                "struct vfs_class { "
+                "; struct vfs_class { "
                 "void ( * fill_names ) ( void ( * ) ( const char * ) , struct vfs_class * me ) ; "
                 "}";
 
             ASSERT_EQUALS(expected, simplifyTypedef(code));
+            ASSERT_EQUALS(expected, simplifyTypedefC(code));
         }
     }
 
@@ -851,6 +945,7 @@ private:
             const char expected[] = "void addCallback ( void ( * ( * callback ) ( ) ) ( ) ) ;";
 
             ASSERT_EQUALS(expected, tok(code, false));
+            ASSERT_EQUALS(std::string("; ") + expected, simplifyTypedefC(code));
         }
 
         {
@@ -863,6 +958,7 @@ private:
             const char expected[] = "struct mscrtc6845 * pc_video_start ( void ( * ( * choosevideomode ) ( running_machine * machine , int * width , int * height , struct mscrtc6845 * crtc ) ) ( bitmap_t * bitmap , struct mscrtc6845 * crtc ) ) ;";
 
             ASSERT_EQUALS(expected, tok(code, false));
+            ASSERT_EQUALS(std::string("; ") + expected, simplifyTypedefC(code));
         }
     }
 
@@ -992,6 +1088,7 @@ private:
             "const char * ccp ;";
 
         ASSERT_EQUALS(expected, tok(code, false));
+        ASSERT_EQUALS(std::string("; ; ; ") + expected, simplifyTypedefC(code));
     }
 
     void simplifyTypedef33() {
@@ -1256,6 +1353,7 @@ private:
                                     "} ;";
             ASSERT_EQUALS(expected, tok(code));
             ASSERT_EQUALS("", errout.str());
+            ASSERT_EQUALS(std::string("; ") + expected, simplifyTypedefC(code));
         }
 
         {
@@ -1272,6 +1370,7 @@ private:
                                     "} ;";
             ASSERT_EQUALS(expected, tok(code));
             ASSERT_EQUALS("", errout.str());
+            ASSERT_EQUALS(std::string("; ") + expected, simplifyTypedefC(code));
         }
 
         {
@@ -1384,6 +1483,7 @@ private:
         const char expected[] = "struct A { int a ; } ; "
                                 "const struct A * ap ;";
         ASSERT_EQUALS(expected, tok(code));
+        ASSERT_EQUALS(expected, simplifyTypedefC(code));
     }
 
     void simplifyTypedef47() {
